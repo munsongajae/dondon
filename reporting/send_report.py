@@ -12,6 +12,7 @@ from reporting.exchange_fetcher import format_datetime, load_exchange_rates
 
 
 KAKAO_MEMO_URL = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
+KAKAO_TOKEN_URL = "https://kauth.kakao.com/oauth/token"
 STREAMLIT_APP_URL = "https://dondon.streamlit.app/"
 
 
@@ -95,12 +96,31 @@ def format_datetime_str(value: str | None) -> str:
     return value
 
 
+def refresh_access_token(refresh_token: str) -> str:
+    """refresh token을 사용해 새로운 access token 발급"""
+    response = requests.post(
+        KAKAO_TOKEN_URL,
+        data={
+            "grant_type": "refresh_token",
+            "client_id": os.getenv("KAKAO_REST_API_KEY", ""),
+            "refresh_token": refresh_token,
+        },
+        timeout=10,
+    )
+    if response.status_code != 200:
+        raise RuntimeError(f"토큰 갱신 실패: {response.status_code} {response.text}")
+    data = response.json()
+    return data["access_token"]
+
+
 def send_kakao_message(message: str, *, dry_run: bool = False):
     if dry_run:
         print(message)
         return
 
     access_token = os.getenv("KAKAO_ACCESS_TOKEN")
+    refresh_token = os.getenv("KAKAO_REFRESH_TOKEN")
+    
     if not access_token:
         raise RuntimeError("환경 변수 KAKAO_ACCESS_TOKEN이 필요합니다. Kakao OAuth로 발급한 사용자의 액세스 토큰을 설정하세요.")
 
@@ -125,6 +145,27 @@ def send_kakao_message(message: str, *, dry_run: bool = False):
         },
         timeout=10,
     )
+
+    # access token이 만료된 경우 refresh token으로 갱신 후 재시도
+    if response.status_code == 401 and refresh_token:
+        try:
+            new_access_token = refresh_access_token(refresh_token)
+            # 갱신된 토큰으로 재시도
+            response = requests.post(
+                KAKAO_MEMO_URL,
+                headers={
+                    "Authorization": f"Bearer {new_access_token}",
+                    "Content-type": "application/x-www-form-urlencoded;charset=utf-8",
+                },
+                data={
+                    "template_object": json.dumps(payload, ensure_ascii=False),
+                },
+                timeout=10,
+            )
+            if response.status_code == 200:
+                print(f"[알림] Access token이 자동으로 갱신되었습니다. 다음 실행을 위해 환경 변수 KAKAO_ACCESS_TOKEN을 업데이트하세요: {new_access_token}")
+        except Exception as e:
+            raise RuntimeError(f"토큰 갱신 후 재시도 실패: {e}")
 
     if response.status_code != 200:
         raise RuntimeError(f"Kakao API 오류: {response.status_code} {response.text}")
