@@ -1,20 +1,12 @@
-import inspect
-from datetime import datetime, timedelta
-from typing import Callable, Optional
+from datetime import datetime
 
 import pandas as pd
 import streamlit as st
 
-# mybank.py에서 함수들 import
-from mybank import (
-    get_shinhan_exchange_rate,
-    get_kbstar_exchange_rate,
-    get_hanabank_exchange_rate,
-    get_investing_exchange_rate
+from reporting.exchange_fetcher import (
+    format_datetime,
+    load_exchange_rates as fetch_exchange_rates,
 )
-
-# bithumb_usdt.py에서 함수 import
-from bithumb_usdt import get_bithumb_usdt, get_bithumb_btc
 
 # 페이지 설정
 st.set_page_config(
@@ -23,164 +15,14 @@ st.set_page_config(
     layout="wide"
 )
 
-# 시간 포맷 함수
-def format_datetime(date_str, time_str):
-    """YYYYMMDD와 HHMMSS를 읽기 쉬운 형식으로 변환"""
-    if date_str and time_str:
-        try:
-            year = date_str[:4]
-            month = date_str[4:6]
-            day = date_str[6:8]
-            hour = time_str[:2]
-            minute = time_str[2:4]
-            second = time_str[4:6]
-            return f"{year}-{month}-{day} {hour}:{minute}:{second}"
-        except:
-            return f"{date_str} {time_str}"
-    return "-"
-
-# 영업일 조회 헬퍼
-MAX_LOOKBACK_DAYS = 7
-
-def iterate_business_days(start_date: datetime, max_days: int):
-    """가까운 과거 영업일을 순회"""
-    candidate = start_date
-    yielded = 0
-    while yielded < max_days:
-        if candidate.weekday() < 5:  # 월(0)~금(4)
-            yield candidate
-            yielded += 1
-        candidate = candidate - timedelta(days=1)
-
-def supports_target_date(fetcher: Callable) -> bool:
-    """주어진 fetcher가 target_date 인자를 지원하는지 확인"""
-    try:
-        sig = inspect.signature(fetcher)
-    except (ValueError, TypeError):
-        return False
-
-    if 'target_date' in sig.parameters:
-        return True
-
-    # 첫 번째 파라미터가 일반 positional/keyword이면 허용
-    params = list(sig.parameters.values())
-    if not params:
-        return False
-
-    first = params[0]
-    return first.kind in (
-        inspect.Parameter.POSITIONAL_ONLY,
-        inspect.Parameter.POSITIONAL_OR_KEYWORD,
-    )
-
-
-def fetch_with_fallback(fetcher: Callable[[datetime], Optional[dict]], max_days: int = MAX_LOOKBACK_DAYS):
-    """
-    지정된 fetcher를 사용해 최근 영업일 순으로 조회하며,
-    데이터가 없으면 전 영업일 데이터까지 탐색
-    """
-    today = datetime.now().date()
-
-    if not supports_target_date(fetcher):
-        try:
-            result = fetcher()
-        except Exception as exc:
-            print(f"{fetcher.__name__} 조회 실패(현재일자): {exc}")
-            return None
-
-        if result:
-            result['is_previous'] = False
-        return result
-
-    for target_date in iterate_business_days(datetime.now(), max_days):
-        try:
-            result = fetcher(target_date)
-        except Exception as exc:
-            print(f"{fetcher.__name__} 조회 실패({target_date.date()}): {exc}")
-            continue
-
-        has_rates = result and result.get('USD') and result.get('JPY')
-        if has_rates:
-            result['is_previous'] = target_date.date() != today
-            return result
-    return None
-
-# 데이터 로딩 함수
 @st.cache_data(ttl=60)
 def load_exchange_rates():
     """환율 데이터 로딩 (1분 캐시)"""
-    bank_data = []
-    investing_data = None
-    bithumb_data = None
-    
-    with st.spinner('신한은행 조회 중...'):
-        shinhan = fetch_with_fallback(get_shinhan_exchange_rate)
-        if shinhan:
-            bank_data.append({
-                '은행': '신한은행',
-                '조회일시': format_datetime(shinhan['date'], shinhan['time']),
-                '고시회차': f"{shinhan['round']}회차",
-                'USD_raw': shinhan['USD'],
-                'JPY_raw': shinhan['JPY'],
-                'is_previous': shinhan.get('is_previous', False)
-            })
-    
-    with st.spinner('국민은행 조회 중...'):
-        kbstar = fetch_with_fallback(get_kbstar_exchange_rate)
-        if kbstar:
-            bank_data.append({
-                '은행': '국민은행',
-                '조회일시': format_datetime(kbstar['date'], kbstar['time']),
-                '고시회차': f"{kbstar['round']}회차",
-                'USD_raw': kbstar['USD'],
-                'JPY_raw': kbstar['JPY'],
-                'is_previous': kbstar.get('is_previous', False)
-            })
-    
-    with st.spinner('하나은행 조회 중...'):
-        hana = fetch_with_fallback(get_hanabank_exchange_rate)
-        if hana:
-            bank_data.append({
-                '은행': '하나은행',
-                '조회일시': format_datetime(hana['date'], hana['time']),
-                '고시회차': f"{hana['round']}회차",
-                'USD_raw': hana['USD'],
-                'JPY_raw': hana['JPY'],
-                'is_previous': hana.get('is_previous', False)
-            })
-    
-    with st.spinner('Investing.com 조회 중...'):
-        investing = get_investing_exchange_rate()
-        if investing:
-            investing_data = {
-                'datetime': format_datetime(investing['date'], investing['time']),
-                'USD_KRW': investing['USD_KRW'],
-                'JPY_KRW': investing['JPY_KRW'] * 100  # 100엔당으로 변환
-            }
-    
-    with st.spinner('빗썸 USDT 조회 중...'):
-        bithumb = get_bithumb_usdt()
-        if bithumb:
-            bithumb_data = {
-                'price': bithumb['price'],
-                'change_rate': bithumb['change_rate'],
-                'change_amount': bithumb['change_amount']
-            }
-    
-    with st.spinner('빗썸 BTC 조회 중...'):
-        btc = get_bithumb_btc()
-        btc_data = None
-        if btc:
-            btc_data = {
-                'price': btc['price'],
-                'change_rate': btc['change_rate'],
-                'change_amount': btc['change_amount']
-            }
-    
-    return bank_data, investing_data, bithumb_data, btc_data
+    return fetch_exchange_rates()
 
 # 데이터 로드
-bank_data, investing_data, bithumb_data, btc_data = load_exchange_rates()
+with st.spinner('환율 데이터 조회 중...'):
+    bank_data, investing_data, bithumb_data, btc_data = load_exchange_rates()
 
 # 헤더 영역 - Investing.com 환율
 st.title("💱 환율 정보")
