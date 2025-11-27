@@ -1,7 +1,9 @@
-import streamlit as st
-import pandas as pd
+import inspect
 from datetime import datetime, timedelta
 from typing import Callable, Optional
+
+import pandas as pd
+import streamlit as st
 
 # mybank.py에서 함수들 import
 from mybank import (
@@ -50,12 +52,46 @@ def iterate_business_days(start_date: datetime, max_days: int):
             yielded += 1
         candidate = candidate - timedelta(days=1)
 
+def supports_target_date(fetcher: Callable) -> bool:
+    """주어진 fetcher가 target_date 인자를 지원하는지 확인"""
+    try:
+        sig = inspect.signature(fetcher)
+    except (ValueError, TypeError):
+        return False
+
+    if 'target_date' in sig.parameters:
+        return True
+
+    # 첫 번째 파라미터가 일반 positional/keyword이면 허용
+    params = list(sig.parameters.values())
+    if not params:
+        return False
+
+    first = params[0]
+    return first.kind in (
+        inspect.Parameter.POSITIONAL_ONLY,
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    )
+
+
 def fetch_with_fallback(fetcher: Callable[[datetime], Optional[dict]], max_days: int = MAX_LOOKBACK_DAYS):
     """
     지정된 fetcher를 사용해 최근 영업일 순으로 조회하며,
     데이터가 없으면 전 영업일 데이터까지 탐색
     """
     today = datetime.now().date()
+
+    if not supports_target_date(fetcher):
+        try:
+            result = fetcher()
+        except Exception as exc:
+            print(f"{fetcher.__name__} 조회 실패(현재일자): {exc}")
+            return None
+
+        if result:
+            result['is_previous'] = False
+        return result
+
     for target_date in iterate_business_days(datetime.now(), max_days):
         try:
             result = fetcher(target_date)
