@@ -209,7 +209,7 @@ if bank_data:
     df = df.sort_values('조회일시', ascending=True)
     
     # 표시용 컬럼만 선택
-    display_df = df[['은행', '조회일시', '고시회차', 'USD', 'JPY(100엔)']]
+    display_df = df[['은행', 'USD', 'JPY(100엔)', '조회일시', '고시회차']]
     
     # 스타일 함수 정의
     def color_diff(val):
