@@ -18,7 +18,7 @@ from bithumb_usdt import get_bithumb_usdt, get_bithumb_btc
 
 # 페이지 설정
 st.set_page_config(
-    page_title="실시간 환율 정보",
+    page_title="환율 정보",
     page_icon="💱",
     layout="wide"
 )
@@ -183,7 +183,7 @@ def load_exchange_rates():
 bank_data, investing_data, bithumb_data, btc_data = load_exchange_rates()
 
 # 헤더 영역 - Investing.com 환율
-st.title("💱 실시간 환율 정보")
+st.title("💱 환율 정보")
 
 if investing_data:
     col1, col2, col3, col4, col5 = st.columns([1, 1, 1, 1, 1])
