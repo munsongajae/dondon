@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Callable, Optional
 
 # mybank.py에서 함수들 import
 from mybank import (
@@ -36,6 +37,38 @@ def format_datetime(date_str, time_str):
             return f"{date_str} {time_str}"
     return "-"
 
+# 영업일 조회 헬퍼
+MAX_LOOKBACK_DAYS = 7
+
+def iterate_business_days(start_date: datetime, max_days: int):
+    """가까운 과거 영업일을 순회"""
+    candidate = start_date
+    yielded = 0
+    while yielded < max_days:
+        if candidate.weekday() < 5:  # 월(0)~금(4)
+            yield candidate
+            yielded += 1
+        candidate = candidate - timedelta(days=1)
+
+def fetch_with_fallback(fetcher: Callable[[datetime], Optional[dict]], max_days: int = MAX_LOOKBACK_DAYS):
+    """
+    지정된 fetcher를 사용해 최근 영업일 순으로 조회하며,
+    데이터가 없으면 전 영업일 데이터까지 탐색
+    """
+    today = datetime.now().date()
+    for target_date in iterate_business_days(datetime.now(), max_days):
+        try:
+            result = fetcher(target_date)
+        except Exception as exc:
+            print(f"{fetcher.__name__} 조회 실패({target_date.date()}): {exc}")
+            continue
+
+        has_rates = result and result.get('USD') and result.get('JPY')
+        if has_rates:
+            result['is_previous'] = target_date.date() != today
+            return result
+    return None
+
 # 데이터 로딩 함수
 @st.cache_data(ttl=60)
 def load_exchange_rates():
@@ -45,36 +78,39 @@ def load_exchange_rates():
     bithumb_data = None
     
     with st.spinner('신한은행 조회 중...'):
-        shinhan = get_shinhan_exchange_rate()
+        shinhan = fetch_with_fallback(get_shinhan_exchange_rate)
         if shinhan:
             bank_data.append({
                 '은행': '신한은행',
                 '조회일시': format_datetime(shinhan['date'], shinhan['time']),
                 '고시회차': f"{shinhan['round']}회차",
                 'USD_raw': shinhan['USD'],
-                'JPY_raw': shinhan['JPY']
+                'JPY_raw': shinhan['JPY'],
+                'is_previous': shinhan.get('is_previous', False)
             })
     
     with st.spinner('국민은행 조회 중...'):
-        kbstar = get_kbstar_exchange_rate()
+        kbstar = fetch_with_fallback(get_kbstar_exchange_rate)
         if kbstar:
             bank_data.append({
                 '은행': '국민은행',
                 '조회일시': format_datetime(kbstar['date'], kbstar['time']),
                 '고시회차': f"{kbstar['round']}회차",
                 'USD_raw': kbstar['USD'],
-                'JPY_raw': kbstar['JPY']
+                'JPY_raw': kbstar['JPY'],
+                'is_previous': kbstar.get('is_previous', False)
             })
     
     with st.spinner('하나은행 조회 중...'):
-        hana = get_hanabank_exchange_rate()
+        hana = fetch_with_fallback(get_hanabank_exchange_rate)
         if hana:
             bank_data.append({
                 '은행': '하나은행',
                 '조회일시': format_datetime(hana['date'], hana['time']),
                 '고시회차': f"{hana['round']}회차",
                 'USD_raw': hana['USD'],
-                'JPY_raw': hana['JPY']
+                'JPY_raw': hana['JPY'],
+                'is_previous': hana.get('is_previous', False)
             })
     
     with st.spinner('Investing.com 조회 중...'):
@@ -179,6 +215,7 @@ st.subheader("🏦 은행별 환율 비교")
 
 if bank_data:
     df = pd.DataFrame(bank_data)
+    has_previous_data = 'is_previous' in df.columns and df['is_previous'].any()
     
     # Investing.com 환율과 비교하여 차이 계산
     if investing_data:
@@ -248,5 +285,7 @@ if bank_data:
     # 업데이트 시간 표시
     st.caption(f"마지막 업데이트: {datetime.now().strftime('%Y년 %m월 %d일 %H:%M:%S')}")
     st.caption("💡 🔵 파란색 (외화 매도) | 🔴 빨간색 (외화 매수)")
+    if has_previous_data:
+        st.caption("※ 일부 은행 데이터는 전 영업일(또는 가장 최근 영업일) 기준입니다.")
 else:
     st.warning("데이터를 가져올 수 없습니다.")

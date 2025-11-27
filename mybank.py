@@ -11,10 +11,11 @@ import requests
 import json
 import re
 from datetime import datetime
+from typing import Optional
 from bs4 import BeautifulSoup
 
 
-def get_shinhan_exchange_rate():
+def get_shinhan_exchange_rate(target_date: Optional[datetime] = None):
     """
     신한은행 API에서 환율 정보 조회
     """
@@ -31,8 +32,9 @@ def get_shinhan_exchange_rate():
         'submissionid': 'sbm_F3730'
     }
 
-    # 오늘 날짜 (YYYYMMDD)
-    today_str = datetime.now().strftime('%Y%m%d')
+    # 조회 날짜 (기본: 오늘)
+    target_dt = target_date or datetime.now()
+    today_str = target_dt.strftime('%Y%m%d')
 
     data = {
         "dataBody": {
@@ -130,7 +132,7 @@ def get_shinhan_exchange_rate():
         return None
 
 
-def get_kbstar_exchange_rate():
+def get_kbstar_exchange_rate(target_date: Optional[datetime] = None):
     """
     국민은행(KB Star) 환율 정보 크롤링
     """
@@ -143,6 +145,7 @@ def get_kbstar_exchange_rate():
     }
     
     try:
+        _ = target_date or datetime.now()  # 파라미터 호환용
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         
@@ -210,7 +213,7 @@ def get_kbstar_exchange_rate():
         return None
 
 
-def get_hanabank_exchange_rate():
+def get_hanabank_exchange_rate(target_date: Optional[datetime] = None):
     """
     하나은행 환율 정보 크롤링 (POST 요청 사용)
     """
@@ -228,9 +231,9 @@ def get_hanabank_exchange_rate():
         'X-Requested-With': 'XMLHttpRequest',
     }
     
-    today = datetime.now()
-    date_str = today.strftime('%Y%m%d')
-    date_formatted = today.strftime('%Y-%m-%d')
+    target_dt = target_date or datetime.now()
+    date_str = target_dt.strftime('%Y%m%d')
+    date_formatted = target_dt.strftime('%Y-%m-%d')
     
     data = {
         'ajax': 'true',
