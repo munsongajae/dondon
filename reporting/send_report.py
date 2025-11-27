@@ -19,44 +19,43 @@ def build_report_lines() -> List[str]:
     bank_data, investing_data, bithumb_data, btc_data = load_exchange_rates()
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    lines = [f"[환율 리포트] {now_str} 기준"]
+    lines = [f"[환율 요약] {now_str}"]
 
     if investing_data:
         lines.append(
-            f"- Investing USD: ₩{investing_data['USD_KRW']:,.2f}, "
-            f"JPY(100엔): ₩{investing_data['JPY_KRW']:,.2f}"
+            f"USD ₩{investing_data['USD_KRW']:,.2f} | 100JPY ₩{investing_data['JPY_KRW']:,.2f}"
         )
 
-    if bithumb_data and investing_data and investing_data['USD_KRW']:
-        kimchi = ((bithumb_data['price'] - investing_data['USD_KRW']) / investing_data['USD_KRW']) * 100
+    if bithumb_data:
+        kimchi_text = ""
+        if investing_data and investing_data['USD_KRW']:
+            kimchi = ((bithumb_data['price'] - investing_data['USD_KRW']) / investing_data['USD_KRW']) * 100
+            kimchi_text = f", 김치 {kimchi:+.2f}%"
         lines.append(
-            f"- 빗썸 USDT: ₩{bithumb_data['price']:,.0f} ({bithumb_data['change_rate']:+.2f}%), "
-            f"김치프리미엄 {kimchi:+.2f}%"
-        )
-    elif bithumb_data:
-        lines.append(
-            f"- 빗썸 USDT: ₩{bithumb_data['price']:,.0f} ({bithumb_data['change_rate']:+.2f}%)"
+            f"USDT ₩{bithumb_data['price']:,.0f} ({bithumb_data['change_rate']:+.2f}%)" + kimchi_text
         )
 
     if btc_data:
         lines.append(
-            f"- 빗썸 BTC: ₩{btc_data['price']:,.0f} ({btc_data['change_rate']:+.2f}%)"
+            f"BTC ₩{btc_data['price']:,.0f} ({btc_data['change_rate']:+.2f}%)"
         )
 
     if bank_data:
-        lines.append("은행별 매매기준환율")
+        lines.append("")
+        lines.append("은행 매매기준")
         for item in bank_data:
-            marker = " (전영업일)" if item.get("is_previous") else ""
+            marker = "·" if not item.get("is_previous") else "·*"
             usd = f"{item['USD_raw']:,.2f}"
             jpy = f"{item['JPY_raw']:,.2f}"
-            timestamp = format_datetime_str(item.get("조회일시")) or "-"
             lines.append(
-                f"· {item['은행']}{marker}: USD {usd}, JPY(100엔) {jpy} / {timestamp} {item['고시회차']}"
+                f"{marker} {item['은행']}: USD {usd} | 100JPY {jpy}"
             )
+        lines.append("* 표시: 전 영업일 기준")
     else:
         lines.append("은행 환율 데이터를 가져오지 못했습니다.")
 
-    lines.append(f"상세보기: {STREAMLIT_APP_URL}")
+    lines.append("")
+    lines.append(f"상세: {STREAMLIT_APP_URL}")
     return lines
 
 
