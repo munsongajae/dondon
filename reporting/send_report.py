@@ -19,40 +19,70 @@ def build_report_lines() -> List[str]:
     bank_data, investing_data, bithumb_data, btc_data = load_exchange_rates()
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    lines = [f"[환율 요약] {now_str}"]
+    lines = [f"[실시간 환율] {now_str}"]
+
+    usd_base = investing_data['USD_KRW'] if investing_data else None
+    jpy_base = investing_data['JPY_KRW'] if investing_data else None
 
     if investing_data:
+        lines.append("")
+        lines.append(f"{investing_data['USD_KRW']:,.2f}")
+        lines.append(f"{investing_data['JPY_KRW']:,.2f}")
+
+    # Helper to find bank entries
+    def find_bank(bank_name: str):
+        for item in bank_data:
+            if item['은행'] == bank_name:
+                return item
+        return None
+
+    lines.append("")
+    lines.append("[달러 환율]")
+    for bank in ["신한은행", "국민은행", "하나은행"]:
+        item = find_bank(bank)
+        if not item:
+            lines.append(f"{bank.split('은행')[0]}  -")
+            continue
+        diff_text = ""
+        if usd_base:
+            diff = usd_base - item['USD_raw']
+            diff_text = f" ({diff:+.2f})"
         lines.append(
-            f"USD ₩{investing_data['USD_KRW']:,.2f} | 100JPY ₩{investing_data['JPY_KRW']:,.2f}"
+            f"{bank.split('은행')[0]}  {item['USD_raw']:,.2f}{diff_text} {item['고시회차']}"
         )
 
+    lines.append("")
+    lines.append("[엔화 환율]")
+    for bank in ["신한은행", "국민은행", "하나은행"]:
+        item = find_bank(bank)
+        if not item:
+            lines.append(f"{bank.split('은행')[0]}  -")
+            continue
+        diff_text = ""
+        if jpy_base:
+            diff = jpy_base - item['JPY_raw']
+            diff_text = f" ({diff:+.2f})"
+        lines.append(
+            f"{bank.split('은행')[0]} {item['JPY_raw']:,.2f}{diff_text} {item['고시회차']}"
+        )
+
+    lines.append("")
+    lines.append("[테더]")
     if bithumb_data:
         kimchi_text = ""
-        if investing_data and investing_data['USD_KRW']:
-            kimchi = ((bithumb_data['price'] - investing_data['USD_KRW']) / investing_data['USD_KRW']) * 100
-            kimchi_text = f", 김치 {kimchi:+.2f}%"
-        lines.append(
-            f"USDT ₩{bithumb_data['price']:,.0f} ({bithumb_data['change_rate']:+.2f}%)" + kimchi_text
-        )
-
-    if btc_data:
-        lines.append(
-            f"BTC ₩{btc_data['price']:,.0f} ({btc_data['change_rate']:+.2f}%)"
-        )
-
-    if bank_data:
-        lines.append("")
-        lines.append("은행 매매기준")
-        for item in bank_data:
-            marker = "·" if not item.get("is_previous") else "·*"
-            usd = f"{item['USD_raw']:,.2f}"
-            jpy = f"{item['JPY_raw']:,.2f}"
-            lines.append(
-                f"{marker} {item['은행']}: USD {usd} | 100JPY {jpy}"
-            )
-        lines.append("* 표시: 전 영업일 기준")
+        if usd_base:
+            kimchi = ((bithumb_data['price'] - usd_base) / usd_base) * 100
+            kimchi_text = f" (김프 {kimchi:+.2f}%)"
+        lines.append(f"{bithumb_data['price']:,.0f}{kimchi_text}")
     else:
-        lines.append("은행 환율 데이터를 가져오지 못했습니다.")
+        lines.append("-")
+
+    lines.append("")
+    lines.append("[비트]")
+    if btc_data:
+        lines.append(f"{btc_data['price']:,.0f}")
+    else:
+        lines.append("-")
 
     lines.append("")
     lines.append(f"상세: {STREAMLIT_APP_URL}")
