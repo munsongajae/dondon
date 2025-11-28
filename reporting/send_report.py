@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import List
 
 import requests
-import telegram
+from telegram import Bot
 
 from reporting.exchange_fetcher import format_datetime, load_exchange_rates
 
@@ -190,7 +190,7 @@ async def send_telegram_message_async(message: str, *, dry_run: bool = False):
     # 텔레그램은 마크다운 형식 지원, 링크는 HTML 형식으로
     message_with_link = f"{message}\n\n상세: {STREAMLIT_APP_URL}"
     
-    bot = telegram.Bot(token=bot_token)
+    bot = Bot(token=bot_token)
     try:
         await bot.send_message(
             chat_id=int(chat_id),
