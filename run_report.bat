@@ -1,5 +1,5 @@
 @echo off
-REM Daily Kakao report sender
+REM Daily Kakao/Telegram report sender
 
 set SCRIPT_DIR=%~dp0
 cd /d "%SCRIPT_DIR%"
@@ -10,5 +10,6 @@ if not exist "%PYTHON_EXE%" (
     exit /b 1
 )
 
-"%PYTHON_EXE%" -m reporting.send_report >> "%SCRIPT_DIR%report.log" 2>&1
+"%PYTHON_EXE%" -m reporting.send_report --all >> "%SCRIPT_DIR%report.log" 2>&1
+
 
