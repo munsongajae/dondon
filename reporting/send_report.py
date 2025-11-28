@@ -1,19 +1,20 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import os
 from datetime import datetime
 from typing import List
 
 import requests
+import telegram
 
 from reporting.exchange_fetcher import format_datetime, load_exchange_rates
 
 
 KAKAO_MEMO_URL = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
 KAKAO_TOKEN_URL = "https://kauth.kakao.com/oauth/token"
-TELEGRAM_API_URL = "https://api.telegram.org/bot{token}/sendMessage"
 STREAMLIT_APP_URL = "https://dondon.streamlit.app/"
 
 
@@ -172,8 +173,8 @@ def send_kakao_message(message: str, *, dry_run: bool = False):
         raise RuntimeError(f"Kakao API 오류: {response.status_code} {response.text}")
 
 
-def send_telegram_message(message: str, *, dry_run: bool = False):
-    """텔레그램 봇을 통해 메시지 전송"""
+async def send_telegram_message_async(message: str, *, dry_run: bool = False):
+    """텔레그램 봇을 통해 메시지 전송 (비동기)"""
     if dry_run:
         print("[텔레그램] " + message)
         return
@@ -186,29 +187,26 @@ def send_telegram_message(message: str, *, dry_run: bool = False):
     if not chat_id:
         raise RuntimeError("환경 변수 TELEGRAM_CHAT_ID가 필요합니다. 봇에게 메시지를 보낼 사용자의 chat_id를 설정하세요.")
 
-    url = TELEGRAM_API_URL.format(token=bot_token)
-    
     # 텔레그램은 마크다운 형식 지원, 링크는 HTML 형식으로
     message_with_link = f"{message}\n\n상세: {STREAMLIT_APP_URL}"
     
-    response = requests.post(
-        url,
-        json={
-            "chat_id": chat_id,
-            "text": message_with_link,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": False,
-        },
-        timeout=10,
-    )
+    bot = telegram.Bot(token=bot_token)
+    try:
+        await bot.send_message(
+            chat_id=int(chat_id),
+            text=message_with_link,
+            parse_mode="HTML",
+            disable_web_page_preview=False,
+        )
+    except Exception as e:
+        raise RuntimeError(f"텔레그램 API 오류: {e}")
 
-    if response.status_code != 200:
-        try:
-            error_data = response.json()
-            error_msg = error_data.get('description', error_data.get('error_code', response.text))
-        except:
-            error_msg = response.text
-        raise RuntimeError(f"텔레그램 API 오류: {response.status_code} {error_msg}")
+
+def send_telegram_message(message: str, *, dry_run: bool = False):
+    """텔레그램 봇을 통해 메시지 전송 (동기 래퍼)"""
+    if os.name == 'nt':  # Windows
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    asyncio.run(send_telegram_message_async(message, dry_run=dry_run))
 
 
 def main():
