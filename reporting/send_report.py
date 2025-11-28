@@ -203,8 +203,12 @@ def send_telegram_message(message: str, *, dry_run: bool = False):
     )
 
     if response.status_code != 200:
-        error_data = response.json() if response.text else {}
-        raise RuntimeError(f"텔레그램 API 오류: {response.status_code} {error_data.get('description', response.text)}")
+        try:
+            error_data = response.json()
+            error_msg = error_data.get('description', error_data.get('error_code', response.text))
+        except:
+            error_msg = response.text
+        raise RuntimeError(f"텔레그램 API 오류: {response.status_code} {error_msg}")
 
 
 def main():
