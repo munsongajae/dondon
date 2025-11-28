@@ -13,6 +13,7 @@ from reporting.exchange_fetcher import format_datetime, load_exchange_rates
 
 KAKAO_MEMO_URL = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
 KAKAO_TOKEN_URL = "https://kauth.kakao.com/oauth/token"
+TELEGRAM_API_URL = "https://api.telegram.org/bot{token}/sendMessage"
 STREAMLIT_APP_URL = "https://dondon.streamlit.app/"
 
 
@@ -171,14 +172,67 @@ def send_kakao_message(message: str, *, dry_run: bool = False):
         raise RuntimeError(f"Kakao API 오류: {response.status_code} {response.text}")
 
 
+def send_telegram_message(message: str, *, dry_run: bool = False):
+    """텔레그램 봇을 통해 메시지 전송"""
+    if dry_run:
+        print("[텔레그램] " + message)
+        return
+
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+    
+    if not bot_token:
+        raise RuntimeError("환경 변수 TELEGRAM_BOT_TOKEN이 필요합니다. BotFather에서 발급받은 봇 토큰을 설정하세요.")
+    if not chat_id:
+        raise RuntimeError("환경 변수 TELEGRAM_CHAT_ID가 필요합니다. 봇에게 메시지를 보낼 사용자의 chat_id를 설정하세요.")
+
+    url = TELEGRAM_API_URL.format(token=bot_token)
+    
+    # 텔레그램은 마크다운 형식 지원, 링크는 HTML 형식으로
+    message_with_link = f"{message}\n\n상세: {STREAMLIT_APP_URL}"
+    
+    response = requests.post(
+        url,
+        json={
+            "chat_id": chat_id,
+            "text": message_with_link,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": False,
+        },
+        timeout=10,
+    )
+
+    if response.status_code != 200:
+        error_data = response.json() if response.text else {}
+        raise RuntimeError(f"텔레그램 API 오류: {response.status_code} {error_data.get('description', response.text)}")
+
+
 def main():
-    parser = argparse.ArgumentParser(description="환율 정보를 카카오톡으로 전송합니다.")
+    parser = argparse.ArgumentParser(description="환율 정보를 카카오톡/텔레그램으로 전송합니다.")
     parser.add_argument("--dry-run", action="store_true", help="메시지를 전송하지 않고 출력만 합니다.")
+    parser.add_argument("--kakao", action="store_true", help="카카오톡으로 전송합니다.")
+    parser.add_argument("--telegram", action="store_true", help="텔레그램으로 전송합니다.")
+    parser.add_argument("--all", action="store_true", help="카카오톡과 텔레그램 모두로 전송합니다.")
     args = parser.parse_args()
 
     lines = build_report_lines()
     message = "\n".join(lines)
-    send_kakao_message(message, dry_run=args.dry_run)
+
+    # 옵션이 없으면 기본적으로 카카오톡으로 전송 (하위 호환성)
+    if not args.kakao and not args.telegram and not args.all:
+        args.kakao = True
+
+    if args.all or args.kakao:
+        try:
+            send_kakao_message(message, dry_run=args.dry_run)
+        except Exception as e:
+            print(f"[카카오톡 전송 실패] {e}")
+
+    if args.all or args.telegram:
+        try:
+            send_telegram_message(message, dry_run=args.dry_run)
+        except Exception as e:
+            print(f"[텔레그램 전송 실패] {e}")
 
 
 if __name__ == "__main__":
