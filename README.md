@@ -37,8 +37,20 @@ streamlit run app.py
 
 #### 2. Chat ID 확인
 - 봇에게 메시지를 보낼 사용자의 chat_id를 확인합니다:
-  - 봇에게 `/start` 메시지를 보냅니다.
-  - `https://api.telegram.org/bot{봇토큰}/getUpdates`를 브라우저에서 열어 응답 JSON에서 `chat.id` 값을 확인합니다.
+  1. **텔레그램 앱에서 봇에게 메시지를 보냅니다:**
+     - 봇을 검색하고 대화를 시작합니다.
+     - `/start` 또는 아무 텍스트 메시지를 보냅니다.
+  2. **브라우저에서 getUpdates 호출:**
+     - 주소창에 `https://api.telegram.org/bot{봇토큰}/getUpdates`를 입력합니다.
+     - 예: `https://api.telegram.org/bot123456789:ABCdefGHIjklMNOpqrsTUVwxyz/getUpdates`
+  3. **응답 확인:**
+     - `{"ok":true,"result":[]}`가 나오면 → 봇에게 메시지를 보낸 직후 다시 새로고침하세요.
+     - `result` 배열에 메시지가 있으면 → 다음 경로에서 `id` 값을 찾습니다:
+       - `result[0].message.from.id` 또는
+       - `result[0].message.chat.id`
+       - 이 숫자 값이 chat_id입니다.
+  4. **JSON 보기:**
+     - JSON이 보기 어렵다면 브라우저 확장 프로그램(JSON Formatter)을 사용하거나, 온라인 JSON 포맷터에 붙여넣어 확인하세요.
 
 #### 3. 환경 변수 설정
 ```cmd
